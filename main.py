@@ -15,6 +15,9 @@ driver = webdriver.Firefox(service=service, options=options)
 url = 'https://drive.google.com/file/d/1mOHre6TCgEin3qEqmSjzKf5OzwsSPIA3/view?usp=drivesdk'# ссылка на видео файл для дальнейшей транскрипции
 try:
     driver.get(url)
+    input_tab = driver.find_element(By.ID('identifierId'))
+    input_tab.send_keys('artem.s@gart.tech')
+    input_tab.send_keys(Keys.ENTER)
 
 except Exception as ex:
      print(ex)
