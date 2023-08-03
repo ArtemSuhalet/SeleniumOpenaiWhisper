@@ -1,26 +1,27 @@
+import datetime
+import warnings
+
+import torch
+
+import wave
+import contextlib
+
+from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
+embedding_model = PretrainedSpeakerEmbedding(
+    "speechbrain/spkrec-ecapa-voxceleb",
+    device=torch.device("cuda"))
+
+from pyannote.audio import Audio
+from pyannote.core import Segment
+
 import openai
 import whisper
-import datetime
-import ffmpeg
-import subprocess
-from moviepy.editor import VideoFileClip
-import torch
-# import pyannote.audio
-# from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
-# embedding_model = PretrainedSpeakerEmbedding(
-#     "speechbrain/spkrec-ecapa-voxceleb",
-#     device=torch.device("cuda"))
-#
-# from pyannote.audio import Audio
-# from pyannote.core import Segment
-#
-# import wave
-# import contextlib
-#
-# from sklearn.cluster import AgglomerativeClustering
-# import numpy as np
-KEY='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'
-openai.api_key = KEY
+
+from sklearn.cluster import AgglomerativeClustering
+import numpy as np
+
+# KEY='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'
+# openai.api_key = KEY
 
 
 #============================================================================
@@ -69,12 +70,49 @@ openai.api_key = KEY
 #     return response
 #
 # print(transcribe_audio('/Users/mymacbook/PycharmProjects/pythonProject/openai_whisper/1.mp4'))
-path = '/Users/mymacbook/PycharmProjects/pythonProject/openai_whisper/1.mp4'
-model = whisper.load_model('base.en')
-option = whisper.DecodingOptions(Language='ru', fp16=False)
-result = model.transcribe(path)
 
-print(result['text'])#должен быть ключ text
+
+
+KEY='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'
+openai.api_key = KEY
+warnings.filterwarnings('ignore')
+
+path = "/Users/mymacbook/Documents/2.mp4"
+#with explain:
+model = whisper.load_model('base.en')
+
+option = whisper.DecodingOptions(fp16=False)
+result = model.transcribe(path)
+segments = result["segments"]
+
+#print(result['text'])#должен быть ключ text
+with contextlib.closing(wave.open(path,'r')) as f:
+    frames = f.getnframes()
+    rate = f.getframerate()
+    duration = frames / float(rate)
+
+audio = Audio()
+
+def segment_embedding(segment):
+    start = segment["start"]
+    # Whisper overshoots the end timestamp in the last segment
+    end = min(duration, segment["end"])
+    clip = Segment(start, end)
+    waveform, sample_rate = audio.crop(path, clip)
+    return embedding_model(waveform[None])
+
+embeddings = np.zeros(shape=(len(segments), 192))
+for i, segment in enumerate(segments):
+    embeddings[i] = segment_embedding(segment)
+
+
+embeddings = np.nan_to_num(embeddings)
+num_speakers = 4
+
+clustering = AgglomerativeClustering(num_speakers).fit(embeddings)
+labels = clustering.labels_
+for i in range(len(segments)):
+    segments[i]["speaker"] = 'SPEAKER' + str(labels[i] + 1)
 
 save_target = 'transcribe.txt'
 
@@ -84,8 +122,3 @@ with open(save_target, 'w') as f:
         f.write(str(datetime.timedelta(seconds=segment['start'])) + '-->' + str(datetime.timedelta(seconds=segment['end'])) + '\n')
         f.write(segment['text'].strip() + '\n')
         f.write('\n')
-# еще варик
-#     for (i, segment) in enumerate(result['segments']):
-#         if i == 0 or result['segments'][i - 1]["speaker"] != segment["speaker"]:
-#             f.write("\n" + segment["speaker"] + ' ' + str(time(segment["start"])) + '\n')
-#         f.write(segment["text"][1:] + ' ')
